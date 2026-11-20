@@ -84,3 +84,54 @@ static void split_block(block_t *b, size_t need)
     b->next = rem;
     if (tail == b) tail = rem;
 }
+
+static void coalesce(void)
+{
+    block_t *cur = head;
+    while (cur && cur->next) {
+        if (cur->free && cur->next->free && is_adjacent(cur, cur->next)) {
+            cur->size += HDR + cur->next->size;
+            if (cur->next == tail) tail = cur;
+            cur->next = cur->next->next;
+        } else {
+            cur = cur->next;
+        }
+    }
+}
+
+void *my_malloc(size_t size)
+{
+    if (size == 0) return NULL;
+    size_t need = align_up(size);
+    block_t *b  = find_fit(need);
+    if (!b) {
+        b = grow(need);
+        if (!b) return NULL;
+        coalesce();
+        b = find_fit(need);
+        if (!b) return NULL;
+    }
+    split_block(b, need);
+    b->free = 0;
+    return payload(b);
+}
+
+void my_free(void *ptr)
+{
+    if (!ptr) return;
+    if (((uintptr_t)ptr % 16u) != 0) {
+        write_str(STDERR_FILENO, "my_free: invalid pointer\n");
+        return;
+    }
+    block_t *b = header(ptr);
+    if (b->magic != MAGIC) {
+        write_str(STDERR_FILENO, "my_free: invalid pointer\n");
+        return;
+    }
+    if (b->free) {
+        write_str(STDERR_FILENO, "my_free: double free detected\n");
+        return;
+    }
+    b->free = 1;
+    coalesce();
+}
