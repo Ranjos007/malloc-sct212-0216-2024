@@ -176,3 +176,60 @@ void *my_realloc(void *ptr, size_t size)
     my_free(ptr);
     return new_ptr;
 }
+
+void set_policy(fit_policy_t p)
+{
+    current_policy = p;
+}
+
+void heap_stats(heap_stats_t *out)
+{
+    if (!out) return;
+    out->heap_bytes   = total_heap_bytes;
+    out->used_bytes   = 0;
+    out->free_bytes   = 0;
+    out->blocks       = 0;
+    out->free_blocks  = 0;
+    out->largest_free = 0;
+
+    for (block_t *cur = head; cur != NULL; cur = cur->next) {
+        out->blocks++;
+        if (cur->free) {
+            out->free_bytes += cur->size;
+            out->free_blocks++;
+            if (cur->size > out->largest_free) out->largest_free = cur->size;
+        } else {
+            out->used_bytes += cur->size;
+        }
+    }
+}
+
+void heap_dump(void)
+{
+    char buf[128];
+    size_t idx = 0;
+    for (block_t *cur = head; cur != NULL; cur = cur->next, idx++) {
+        int len = snprintf(buf, sizeof(buf), "[%2zu] %p size=%zu %s\n",
+                           idx, payload(cur), cur->size,
+                           cur->free ? "FREE" : "USED");
+        if (len > 0) {
+            size_t n = (size_t)len < sizeof(buf) ? (size_t)len : sizeof(buf) - 1;
+            ssize_t r = write(STDOUT_FILENO, buf, n);
+            (void)r;
+        }
+    }
+}
+
+int heap_check(void)
+{
+    for (block_t *cur = head; cur != NULL; cur = cur->next) {
+        if (cur->magic != MAGIC) return 0;
+        if (((uintptr_t)payload(cur) % 16u) != 0) return 0;
+        if (cur->next) {
+            if ((uintptr_t)cur >= (uintptr_t)cur->next) return 0;
+            if ((char *)cur + HDR + cur->size > (char *)cur->next) return 0;
+            if (cur->free && cur->next->free && is_adjacent(cur, cur->next)) return 0;
+        }
+    }
+    return 1;
+}
