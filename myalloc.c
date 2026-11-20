@@ -57,3 +57,30 @@ static block_t *grow(size_t need)
     else { tail->next = b; tail = b; }
     return b;
 }
+
+static block_t *find_fit(size_t need)
+{
+    block_t *best = NULL;
+    for (block_t *cur = head; cur != NULL; cur = cur->next) {
+        if (cur->free && cur->size >= need) {
+            if (current_policy == FIT_FIRST) return cur;
+            if (!best || cur->size < best->size) best = cur;
+        }
+    }
+    return best;
+}
+
+static void split_block(block_t *b, size_t need)
+{
+    if (b->size < need + HDR + MIN_PAYLOAD) return;
+
+    block_t *rem = (block_t *)((char *)b + HDR + need);
+    rem->size    = b->size - need - HDR;
+    rem->free    = 1;
+    rem->magic   = MAGIC;
+    rem->next    = b->next;
+
+    b->size = need;
+    b->next = rem;
+    if (tail == b) tail = rem;
+}
