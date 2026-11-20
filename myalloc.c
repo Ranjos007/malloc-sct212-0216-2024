@@ -135,3 +135,44 @@ void my_free(void *ptr)
     b->free = 1;
     coalesce();
 }
+
+void *my_calloc(size_t nmemb, size_t size)
+{
+    if (nmemb == 0 || size == 0) return NULL;
+    if (size > SIZE_MAX / nmemb) return NULL;
+    size_t total = nmemb * size;
+    void *ptr    = my_malloc(total);
+    if (ptr) memset(ptr, 0, total);
+    return ptr;
+}
+
+void *my_realloc(void *ptr, size_t size)
+{
+    if (!ptr) return my_malloc(size);
+    if (size == 0) { my_free(ptr); return NULL; }
+
+    block_t *b = header(ptr);
+    if (b->magic != MAGIC) return NULL;
+
+    size_t need = align_up(size);
+    if (b->size >= need) {
+        split_block(b, need);
+        coalesce();
+        return ptr;
+    }
+    if (b->next && b->next->free && is_adjacent(b, b->next) &&
+        (b->size + HDR + b->next->size >= need)) {
+        b->size += HDR + b->next->size;
+        if (b->next == tail) tail = b;
+        b->next = b->next->next;
+        split_block(b, need);
+        coalesce();
+        return ptr;
+    }
+    void *new_ptr = my_malloc(size);
+    if (!new_ptr) return NULL;
+    size_t copy_len = b->size < size ? b->size : size;
+    memcpy(new_ptr, ptr, copy_len);
+    my_free(ptr);
+    return new_ptr;
+}
