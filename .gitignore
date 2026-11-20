@@ -1,0 +1,4 @@
+test_myalloc
+t_asan
+bench
+*.o
